@@ -5,27 +5,27 @@ import (
 	"strings"
 
 	"filmyfly-go-fiber/internal/config"
-	"filmyfly-go-fiber/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
 )
 
-var SessionStore *session.Store
+var Store *session.Store
 
 // InitSession initializes the session store
-func InitSession(cfg *config.Config) {
-	SessionStore = session.New(session.Config{
-		CookieName:     "connect.sid",
+func InitSession() {
+	cfg := config.Load()
+	Store = session.New(session.Config{
+		KeyLookup:      "cookie:session_id",
 		CookieSecure:   cfg.Environment == "production",
 		CookieHTTPOnly: true,
-		Expiration:     24 * 60 * 60, // 24 hours in seconds
+		CookieSameSite: "Lax",
 	})
 }
 
-// VerifyAdminToken middleware verifies Firebase token for admin routes
+// VerifyAdminToken middleware verifies Firebase ID token and manages session
 func VerifyAdminToken(c *fiber.Ctx) error {
-	sess, err := SessionStore.Get(c)
+	sess, err := Store.Get(c)
 	if err != nil {
 		return c.Redirect("/admin/login")
 	}
@@ -37,13 +37,13 @@ func VerifyAdminToken(c *fiber.Ctx) error {
 		return c.Next()
 	}
 
-	// Get token from Authorization header or cookie
-	token := ""
-	authHeader := c.Get("Authorization")
-	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-		token = strings.TrimPrefix(authHeader, "Bearer ")
-	} else {
-		token = c.Cookies("adminToken")
+	// Get token from cookie or Authorization header
+	token := c.Cookies("adminToken")
+	if token == "" {
+		authHeader := c.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
 	}
 
 	if token == "" {
@@ -51,33 +51,40 @@ func VerifyAdminToken(c *fiber.Ctx) error {
 	}
 
 	// Verify token with Firebase
-	decodedToken, err := config.FirebaseAuth.VerifyIDToken(context.Background(), token)
+	ctx := context.Background()
+	decodedToken, err := config.FirebaseAuth.VerifyIDToken(ctx, token)
 	if err != nil {
 		// Clear invalid token
 		c.ClearCookie("adminToken")
 		sess.Delete("adminUser")
 		sess.Save()
-
-		utils.Error("Token verification error: %v", err)
 		return c.Redirect("/admin/login")
 	}
 
-	// Store in session for future requests
-	sess.Set("adminUser", decodedToken)
+	// Store user info in session
+	userInfo := map[string]interface{}{
+		"uid":   decodedToken.UID,
+		"email": decodedToken.Claims["email"],
+		"name":  decodedToken.Claims["name"],
+	}
+	sess.Set("adminUser", userInfo)
 	sess.Save()
 
-	c.Locals("user", decodedToken)
+	c.Locals("user", userInfo)
 	return c.Next()
 }
 
 // RedirectIfAuthenticated redirects to dashboard if already logged in
 func RedirectIfAuthenticated(c *fiber.Ctx) error {
-	sess, err := SessionStore.Get(c)
-	if err == nil {
-		adminUser := sess.Get("adminUser")
-		if adminUser != nil {
-			return c.Redirect("/admin")
-		}
+	sess, err := Store.Get(c)
+	if err != nil {
+		return c.Next()
 	}
+
+	adminUser := sess.Get("adminUser")
+	if adminUser != nil {
+		return c.Redirect("/admin")
+	}
+
 	return c.Next()
 }

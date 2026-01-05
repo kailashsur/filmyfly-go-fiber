@@ -1,0 +1,25 @@
+# robots.txt for FilmyFly
+# Allow all search engines to crawl the site
+
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /admin/*
+Disallow: /api/
+Disallow: /*?page=
+Disallow: /search?to-search=
+
+# Allow specific important pages
+Allow: /about
+Allow: /page-how-to-download-movie
+Allow: /site-privacy-policy
+Allow: /site-contact-us
+Allow: /site-about-us
+Allow: /site-dmca
+
+# Crawl-delay (optional, adjust as needed)
+Crawl-delay: 1
+
+# Sitemap location (will be updated dynamically via route)
+# Sitemap: https://filmyfly.how/sitemap.xml
+

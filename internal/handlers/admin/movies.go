@@ -1,251 +1,256 @@
 package admin
 
 import (
+	"encoding/json"
 	"strconv"
-	"strings"
 
 	"filmyfly-go-fiber/internal/database"
 	"filmyfly-go-fiber/internal/database/models"
-	"filmyfly-go-fiber/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-const ItemsPerPage = 10
-
-// GetMovieList handles GET /admin/movies
+// GetMovieList displays paginated list of movies
 func GetMovieList(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))
-	searchQuery := strings.TrimSpace(c.Query("q", ""))
-	offset := utils.GetOffset(page, ItemsPerPage)
-
-	// Build where clause for search
-	var whereClause string
-	var args []interface{}
-	if searchQuery != "" {
-		whereClause = "LOWER(title) LIKE ? OR LOWER(genre) LIKE ? OR LOWER(cast) LIKE ? OR LOWER(keywords) LIKE ? OR LOWER(slug) LIKE ?"
-		searchPattern := "%" + strings.ToLower(searchQuery) + "%"
-		args = []interface{}{searchPattern, searchPattern, searchPattern, searchPattern, searchPattern}
+	if page < 1 {
+		page = 1
 	}
+	limit := 10
+	offset := (page - 1) * limit
 
-	// Get total count
-	var totalMovies int64
-	query := database.DB.Model(&models.Movie{})
-	if whereClause != "" {
-		query = query.Where(whereClause, args...)
-	}
-	query.Count(&totalMovies)
+	search := c.Query("search", "")
+	success := c.Query("success", "")
+	errorMsg := c.Query("error", "")
 
-	// Get trending movie IDs
+	// Get trending movies with movie details
 	var trendingMoviesData []models.TrendingMovie
 	database.DB.Preload("Movie").Order("\"order\" ASC").Find(&trendingMoviesData)
 
-	trendingMovieIds := make(map[int]bool)
+	trendingMovies := make([]models.Movie, 0)
+	trendingMovieIDs := make(map[int]bool)
 	for _, tm := range trendingMoviesData {
-		trendingMovieIds[tm.MovieID] = true
+		trendingMovies = append(trendingMovies, tm.Movie)
+		trendingMovieIDs[tm.Movie.ID] = true
 	}
 
-	// Get movies with pagination
+	// Get all movies with pagination
 	var movies []models.Movie
-	query = database.DB.Order("\"createdAt\" DESC").Offset(offset).Limit(ItemsPerPage)
-	if whereClause != "" {
-		query = query.Where(whereClause, args...)
-	}
-	query.Find(&movies)
+	var total int64
 
-	// Mark movies as trending
+	query := database.DB.Model(&models.Movie{})
+
+	if search != "" {
+		query = query.Where("LOWER(title) LIKE ?", "%"+search+"%")
+	}
+
+	query.Count(&total)
+	query.Order("\"createdAt\" DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&movies)
+
+	// Add isTrending flag to each movie
 	type MovieWithTrending struct {
 		models.Movie
 		IsTrending bool
 	}
+
 	moviesWithTrending := make([]MovieWithTrending, len(movies))
 	for i, movie := range movies {
 		moviesWithTrending[i] = MovieWithTrending{
 			Movie:      movie,
-			IsTrending: trendingMovieIds[movie.ID],
+			IsTrending: trendingMovieIDs[movie.ID],
 		}
 	}
 
-	totalPages := int((totalMovies + int64(ItemsPerPage) - 1) / int64(ItemsPerPage))
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
 
 	return c.Render("admin/movies/list", fiber.Map{
-		"title":          "Manage Movies",
+		"title":          "Movies Management",
 		"movies":         moviesWithTrending,
+		"trendingMovies": trendingMovies,
 		"currentPage":    page,
 		"totalPages":     totalPages,
-		"totalMovies":    totalMovies,
-		"hasNextPage":    page < totalPages,
-		"hasPrevPage":    page > 1,
-		"searchQuery":    searchQuery,
-		"trendingMovies": trendingMoviesData,
+		"search":         search,
+		"success":        success,
+		"error":          errorMsg,
+		"user": map[string]interface{}{
+			"email": "admin@filmyfly.work",
+		},
 	})
 }
 
-// GetAddMovie handles GET /admin/movies/add
+// GetAddMovie renders add movie form
 func GetAddMovie(c *fiber.Ctx) error {
 	var categories []models.Category
 	database.DB.Order("name ASC").Find(&categories)
 
 	return c.Render("admin/movies/add", fiber.Map{
 		"title":      "Add Movie",
-		"movie":      nil,
 		"categories": categories,
-		"error":      nil,
+		"user": map[string]interface{}{
+			"email": "admin@filmyfly.work",
+		},
 	})
 }
 
-// PostAddMovie handles POST /admin/movies/add
+// PostAddMovie handles movie creation
 func PostAddMovie(c *fiber.Ctx) error {
-	type MovieForm struct {
-		Title       string `form:"title"`
-		Slug        string `form:"slug"`
-		Description string `form:"description"`
-		Thumbnail   string `form:"thumbnail"`
-		Genre       string `form:"genre"`
-		Languages   string `form:"languages"`
-		Duration    string `form:"duration"`
-		ReleaseYear string `form:"releaseYear"`
-		Cast        string `form:"cast"`
-		Sizes       string `form:"sizes"`
-		DownloadURL string `form:"downloadUrl"`
-		Screenshot  string `form:"screenshot"`
-		Keywords    string `form:"keywords"`
-		CategoryID  string `form:"categoryId"`
+	movie := new(models.Movie)
+
+	if err := c.BodyParser(movie); err != nil {
+		return c.Redirect("/admin/movies/add?error=Invalid data")
 	}
 
-	var form MovieForm
-	if err := c.BodyParser(&form); err != nil {
-		return c.Status(400).SendString("Invalid form data")
+	if movie.Title == "" || movie.Slug == "" {
+		return c.Redirect("/admin/movies/add?error=Title and slug are required")
 	}
 
-	// Validate required fields
-	if form.Title == "" || form.Slug == "" {
-		var categories []models.Category
-		database.DB.Order("name ASC").Find(&categories)
-		return c.Render("admin/movies/add", fiber.Map{
-			"title":      "Add Movie",
-			"movie":      form,
-			"categories": categories,
-			"error":      "Title and slug are required",
-		})
-	}
-
-	// Check if slug already exists
-	var existingMovie models.Movie
-	if err := database.DB.Where("slug = ?", form.Slug).First(&existingMovie).Error; err == nil {
-		var categories []models.Category
-		database.DB.Order("name ASC").Find(&categories)
-		return c.Render("admin/movies/add", fiber.Map{
-			"title":      "Add Movie",
-			"movie":      form,
-			"categories": categories,
-			"error":      "A movie with this slug already exists",
-		})
-	}
-
-	// Create movie
-	movie := models.Movie{
-		Title:       form.Title,
-		Slug:        form.Slug,
-		Description: stringPtr(form.Description),
-		Thumbnail:   stringPtr(form.Thumbnail),
-		Genre:       stringPtr(form.Genre),
-		Languages:   stringPtr(form.Languages),
-		Duration:    stringPtr(form.Duration),
-		Cast:        stringPtr(form.Cast),
-		Sizes:       stringPtr(form.Sizes),
-		DownloadURL: stringPtr(form.DownloadURL),
-		Screenshot:  stringPtr(form.Screenshot),
-		Keywords:    stringPtr(form.Keywords),
-	}
-
-	if form.ReleaseYear != "" {
-		year, _ := strconv.Atoi(form.ReleaseYear)
-		movie.ReleaseYear = &year
-	}
-
-	if form.CategoryID != "" {
-		catID, _ := strconv.Atoi(form.CategoryID)
-		movie.CategoryID = &catID
-	}
-
-	if err := database.DB.Create(&movie).Error; err != nil {
-		utils.Error("Failed to create movie: %v", err)
-		var categories []models.Category
-		database.DB.Order("name ASC").Find(&categories)
-		return c.Render("admin/movies/add", fiber.Map{
-			"title":      "Add Movie",
-			"movie":      form,
-			"categories": categories,
-			"error":      "Failed to add movie",
-		})
+	if err := database.DB.Create(movie).Error; err != nil {
+		return c.Redirect("/admin/movies/add?error=Failed to create movie")
 	}
 
 	return c.Redirect("/admin/movies?success=Movie added successfully")
 }
 
-// DeleteMovie handles POST /admin/movies/delete/:id
+// GetBulkAddMovies renders bulk import page
+func GetBulkAddMovies(c *fiber.Ctx) error {
+	return c.Render("admin/movies/bulk-add", fiber.Map{
+		"title": "Bulk Add Movies",
+		"user": map[string]interface{}{
+			"email": "admin@filmyfly.work",
+		},
+	})
+}
+
+// PostBulkAddMovies handles bulk movie import from JSON
+func PostBulkAddMovies(c *fiber.Ctx) error {
+	type BulkImportRequest struct {
+		MoviesJSON string `form:"moviesJson"`
+	}
+
+	var req BulkImportRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Redirect("/admin/movies/bulk-add?error=Invalid request")
+	}
+
+	if req.MoviesJSON == "" {
+		return c.Redirect("/admin/movies/bulk-add?error=JSON data is required")
+	}
+
+	// Parse JSON
+	var movies []models.Movie
+	if err := json.Unmarshal([]byte(req.MoviesJSON), &movies); err != nil {
+		return c.Redirect("/admin/movies/bulk-add?error=Invalid JSON format: " + err.Error())
+	}
+
+	if len(movies) == 0 {
+		return c.Redirect("/admin/movies/bulk-add?error=No movies found in JSON")
+	}
+
+	// Import movies
+	successCount := 0
+	failCount := 0
+
+	for _, movie := range movies {
+		if movie.Title == "" || movie.Slug == "" {
+			failCount++
+			continue
+		}
+
+		if err := database.DB.Create(&movie).Error; err != nil {
+			failCount++
+			continue
+		}
+		successCount++
+	}
+
+	return c.Redirect("/admin/movies?success=Imported " + strconv.Itoa(successCount) + " movies (" + strconv.Itoa(failCount) + " failed)")
+}
+
+// GetEditMovie renders edit movie form
+func GetEditMovie(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var movie models.Movie
+	if err := database.DB.First(&movie, id).Error; err != nil {
+		return c.Redirect("/admin/movies?error=Movie not found")
+	}
+
+	var categories []models.Category
+	database.DB.Order("name ASC").Find(&categories)
+
+	return c.Render("admin/movies/edit", fiber.Map{
+		"title":      "Edit Movie",
+		"movie":      movie,
+		"categories": categories,
+		"user": map[string]interface{}{
+			"email": "admin@filmyfly.work",
+		},
+	})
+}
+
+// PostEditMovie handles movie update
+func PostEditMovie(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var movie models.Movie
+	if err := database.DB.First(&movie, id).Error; err != nil {
+		return c.Redirect("/admin/movies?error=Movie not found")
+	}
+
+	if err := c.BodyParser(&movie); err != nil {
+		return c.Redirect("/admin/movies/edit/" + id + "?error=Invalid data")
+	}
+
+	if err := database.DB.Save(&movie).Error; err != nil {
+		return c.Redirect("/admin/movies/edit/" + id + "?error=Failed to update movie")
+	}
+
+	return c.Redirect("/admin/movies?success=Movie updated successfully")
+}
+
+// DeleteMovie handles movie deletion
 func DeleteMovie(c *fiber.Ctx) error {
-	id, _ := strconv.Atoi(c.Params("id"))
+	id := c.Params("id")
 
 	if err := database.DB.Delete(&models.Movie{}, id).Error; err != nil {
-		utils.Error("Failed to delete movie: %v", err)
 		return c.Redirect("/admin/movies?error=Failed to delete movie")
 	}
 
 	return c.Redirect("/admin/movies?success=Movie deleted successfully")
 }
 
-// AddToTrending handles POST /admin/movies/trending/add/:id
+// AddToTrending adds movie to trending
 func AddToTrending(c *fiber.Ctx) error {
-	movieID, _ := strconv.Atoi(c.Params("id"))
+	id := c.Params("id")
+	movieID, _ := strconv.Atoi(id)
 
-	// Check if movie exists
-	var movie models.Movie
-	if err := database.DB.First(&movie, movieID).Error; err != nil {
-		return c.Redirect("/admin/movies?error=Movie not found")
-	}
-
-	// Check if already in trending
-	var existing models.TrendingMovie
-	if err := database.DB.Where("\"movieId\" = ?", movieID).First(&existing).Error; err == nil {
-		return c.Redirect("/admin/movies?error=Movie is already in trending")
-	}
-
-	// Get current max order
+	// Get max order
 	var maxOrder int
-	database.DB.Model(&models.TrendingMovie{}).Select("COALESCE(MAX(\"order\"), -1)").Scan(&maxOrder)
+	database.DB.Model(&models.TrendingMovie{}).Select("COALESCE(MAX(\"order\"), 0)").Scan(&maxOrder)
 
-	// Add to trending
 	trending := models.TrendingMovie{
 		MovieID: movieID,
 		Order:   maxOrder + 1,
 	}
 
 	if err := database.DB.Create(&trending).Error; err != nil {
-		utils.Error("Failed to add to trending: %v", err)
-		return c.Redirect("/admin/movies?error=Failed to add movie to trending")
+		return c.Redirect("/admin/movies?error=Failed to add to trending")
 	}
 
-	return c.Redirect("/admin/movies?success=Movie added to trending")
+	return c.Redirect("/admin/movies?success=Added to trending")
 }
 
-// RemoveFromTrending handles POST /admin/movies/trending/remove/:id
+// RemoveFromTrending removes movie from trending
 func RemoveFromTrending(c *fiber.Ctx) error {
-	movieID, _ := strconv.Atoi(c.Params("id"))
+	id := c.Params("id")
+	movieID, _ := strconv.Atoi(id)
 
 	if err := database.DB.Where("\"movieId\" = ?", movieID).Delete(&models.TrendingMovie{}).Error; err != nil {
-		utils.Error("Failed to remove from trending: %v", err)
-		return c.Redirect("/admin/movies?error=Failed to remove movie from trending")
+		return c.Redirect("/admin/movies?error=Failed to remove from trending")
 	}
 
-	return c.Redirect("/admin/movies?success=Movie removed from trending")
-}
-
-// Helper function
-func stringPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
+	return c.Redirect("/admin/movies?success=Removed from trending")
 }

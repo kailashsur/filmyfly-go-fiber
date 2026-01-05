@@ -2,8 +2,7 @@ package config
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"log"
 	"strings"
 
 	firebase "firebase.google.com/go/v4"
@@ -13,47 +12,53 @@ import (
 
 var FirebaseAuth *auth.Client
 
-// InitFirebase initializes Firebase Admin SDK
-func InitFirebase(cfg *Config) error {
-	var opt option.ClientOption
+// InitializeFirebase initializes Firebase Admin SDK
+func InitializeFirebase() error {
+	ctx := context.Background()
+	cfg := Load()
 
-	// Option 1: Using service account JSON
+	// Try to initialize with service account key file if it's a valid file path
 	if cfg.FirebaseServiceAccountKey != "" {
-		opt = option.WithCredentialsJSON([]byte(cfg.FirebaseServiceAccountKey))
-	} else if cfg.FirebaseProjectID != "" {
-		// Option 2: Using individual environment variables
-		privateKey := strings.ReplaceAll(cfg.FirebasePrivateKey, "\\n", "\n")
+		// Check if it's a file path (not JSON content)
+		if len(cfg.FirebaseServiceAccountKey) < 500 && !strings.Contains(cfg.FirebaseServiceAccountKey, "{") {
+			opt := option.WithCredentialsFile(cfg.FirebaseServiceAccountKey)
+			app, err := firebase.NewApp(ctx, nil, opt)
+			if err != nil {
+				log.Printf("⚠️  Firebase initialization with file failed: %v", err)
+				return err
+			}
 
-		serviceAccount := map[string]interface{}{
-			"type":         "service_account",
-			"project_id":   cfg.FirebaseProjectID,
-			"private_key":  privateKey,
-			"client_email": cfg.FirebaseClientEmail,
-			"token_uri":    "https://oauth2.googleapis.com/token",
+			client, err := app.Auth(ctx)
+			if err != nil {
+				log.Printf("⚠️  Firebase Auth client creation failed: %v", err)
+				return err
+			}
+
+			FirebaseAuth = client
+			log.Println("✅ Firebase initialized with service account key file")
+			return nil
 		}
 
-		jsonData, err := json.Marshal(serviceAccount)
-		if err != nil {
-			return fmt.Errorf("failed to marshal service account: %w", err)
-		}
-
-		opt = option.WithCredentialsJSON(jsonData)
-	} else {
-		return fmt.Errorf("firebase credentials not configured")
+		// If it looks like JSON content, try to parse it
+		log.Println("⚠️  Firebase service account key appears to be JSON content, not a file path")
+		log.Println("⚠️  Please set FIREBASE_SERVICE_ACCOUNT_KEY to a file path, not JSON content")
 	}
 
-	// Initialize Firebase app
-	app, err := firebase.NewApp(context.Background(), nil, opt)
+	// Try with default credentials or environment variables
+	app, err := firebase.NewApp(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to initialize firebase app: %w", err)
+		log.Printf("⚠️  Firebase initialization failed: %v", err)
+		log.Println("⚠️  Admin authentication will not work without Firebase")
+		return err
 	}
 
-	// Get Auth client
-	authClient, err := app.Auth(context.Background())
+	client, err := app.Auth(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get firebase auth client: %w", err)
+		log.Printf("⚠️  Firebase Auth client creation failed: %v", err)
+		return err
 	}
 
-	FirebaseAuth = authClient
+	FirebaseAuth = client
+	log.Println("✅ Firebase initialized with default credentials")
 	return nil
 }

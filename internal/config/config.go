@@ -55,15 +55,15 @@ func Load() *Config {
 
 		FrontendURL: getEnv("FRONTEND_URL", ""),
 
-		FirebaseProjectID:         getEnv("FIREBASE_PROJECT_ID", ""),
-		FirebaseClientEmail:       getEnv("FIREBASE_CLIENT_EMAIL", ""),
-		FirebasePrivateKey:        getEnv("FIREBASE_PRIVATE_KEY", ""),
-		FirebaseAPIKey:            getEnv("FIREBASE_API_KEY", ""),
-		FirebaseAuthDomain:        getEnv("FIREBASE_AUTH_DOMAIN", ""),
-		FirebaseStorageBucket:     getEnv("FIREBASE_STORAGE_BUCKET", ""),
-		FirebaseMessagingSenderID: getEnv("FIREBASE_MESSAGING_SENDER_ID", ""),
-		FirebaseAppID:             getEnv("FIREBASE_APP_ID", ""),
-		FirebaseServiceAccountKey: getEnv("FIREBASE_SERVICE_ACCOUNT_KEY", ""),
+		FirebaseProjectID:         os.Getenv("FIREBASE_PROJECT_ID"),
+		FirebaseClientEmail:       os.Getenv("FIREBASE_CLIENT_EMAIL"),
+		FirebasePrivateKey:        os.Getenv("FIREBASE_PRIVATE_KEY"),
+		FirebaseAPIKey:            os.Getenv("FIREBASE_API_KEY"),
+		FirebaseAuthDomain:        os.Getenv("FIREBASE_AUTH_DOMAIN"),
+		FirebaseStorageBucket:     os.Getenv("FIREBASE_STORAGE_BUCKET"),
+		FirebaseMessagingSenderID: os.Getenv("FIREBASE_MESSAGING_SENDER_ID"),
+		FirebaseAppID:             os.Getenv("FIREBASE_APP_ID"),
+		FirebaseServiceAccountKey: os.Getenv("FIREBASE_SERVICE_ACCOUNT_KEY"),
 
 		PrismaLogQueries: getEnv("PRISMA_LOG_QUERIES", "false") == "true",
 	}

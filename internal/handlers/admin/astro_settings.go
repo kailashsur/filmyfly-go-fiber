@@ -7,23 +7,23 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// GetSettings displays settings page
-func GetSettings(c *fiber.Ctx) error {
+// GetAstroSettings displays Astro settings page
+func GetAstroSettings(c *fiber.Ctx) error {
 	success := c.Query("success", "")
 	errorMsg := c.Query("error", "")
 
-	// Fetch all settings
-	var settingsData []models.Setting
-	database.DB.Find(&settingsData)
+	// Fetch all Astro settings
+	var astroSettingsData []models.AstroSetting
+	database.DB.Find(&astroSettingsData)
 
 	// Convert to map for easier template access
 	settings := make(map[string]string)
-	for _, s := range settingsData {
+	for _, s := range astroSettingsData {
 		settings[s.Key] = s.Value
 	}
 
-	return c.Render("admin/settings", fiber.Map{
-		"title":    "Site Settings",
+	return c.Render("admin/astro-settings", fiber.Map{
+		"title":    "Astro Website Settings",
 		"settings": settings,
 		"success":  success,
 		"error":    errorMsg,
@@ -33,24 +33,24 @@ func GetSettings(c *fiber.Ctx) error {
 	})
 }
 
-// PostSettings handles settings update
-func PostSettings(c *fiber.Ctx) error {
+// PostAstroSettings handles Astro settings update
+func PostAstroSettings(c *fiber.Ctx) error {
 	// Get all form values
 	formData := make(map[string]string)
 	c.Request().PostArgs().VisitAll(func(key, value []byte) {
 		formData[string(key)] = string(value)
 	})
 
-	// Update each setting
+	// Update each setting in astro_settings table
 	for key, value := range formData {
-		var setting models.Setting
+		var setting models.AstroSetting
 
 		// Find or create setting
 		result := database.DB.Where("`key` = ?", key).First(&setting)
 
 		if result.Error != nil {
 			// Create new setting
-			setting = models.Setting{
+			setting = models.AstroSetting{
 				Key:   key,
 				Value: value,
 			}
@@ -62,5 +62,5 @@ func PostSettings(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.Redirect("/admin/settings?success=Settings updated successfully")
+	return c.Redirect("/admin/astro-settings?success=Astro settings updated successfully")
 }

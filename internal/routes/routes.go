@@ -4,7 +4,6 @@ import (
 	"filmyfly-go-fiber/internal/handlers/admin"
 	"filmyfly-go-fiber/internal/handlers/api"
 	"filmyfly-go-fiber/internal/handlers/public"
-	"filmyfly-go-fiber/internal/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -36,44 +35,53 @@ func Setup(app *fiber.App) {
 		apiGroup.Get("/astro-settings", api.GetAstroSettings)
 	}
 
-	// Admin Routes
+	// Admin Routes (Authentication temporarily disabled)
 	adminGroup := app.Group("/admin")
 	{
-		// Public admin routes (login/logout)
-		adminGroup.Get("/login", middleware.RedirectIfAuthenticated, admin.GetAdminLogin)
-		adminGroup.Post("/login", middleware.RedirectIfAuthenticated, admin.PostAdminLogin)
+		// Login routes (no auth for now)
+		adminGroup.Get("/login", admin.GetAdminLogin)
+		adminGroup.Post("/login", admin.PostAdminLogin)
 		adminGroup.Post("/logout", admin.PostAdminLogout)
 
-		// Protected admin routes
-		adminGroup.Get("/", middleware.VerifyAdminToken, admin.GetAdminDashboard)
-		adminGroup.Get("/system-check", middleware.VerifyAdminToken, admin.GetSystemCheck)
-		adminGroup.Get("/logs", middleware.VerifyAdminToken, admin.GetLogs)
+		// Admin routes (no auth required temporarily)
+		adminGroup.Get("/", admin.GetAdminDashboard)
+		adminGroup.Get("/system-check", admin.GetSystemCheck)
 
 		// Settings
-		adminGroup.Get("/settings", middleware.VerifyAdminToken, admin.GetSettings)
-		adminGroup.Post("/settings", middleware.VerifyAdminToken, admin.PostSettings)
+		adminGroup.Get("/settings", admin.GetSettings)
+		adminGroup.Post("/settings", admin.PostSettings)
 
 		// Astro Settings
-		adminGroup.Get("/astro-settings", middleware.VerifyAdminToken, admin.GetAstroSettings)
-		adminGroup.Post("/astro-settings", middleware.VerifyAdminToken, admin.PostAstroSettings)
+		adminGroup.Get("/astro-settings", admin.GetAstroSettings)
+		adminGroup.Post("/astro-settings", admin.PostAstroSettings)
 
 		// Movie Management
-		adminGroup.Get("/movies", middleware.VerifyAdminToken, admin.GetMovieList)
-		adminGroup.Get("/movies/add", middleware.VerifyAdminToken, admin.GetAddMovie)
-		adminGroup.Post("/movies/add", middleware.VerifyAdminToken, admin.PostAddMovie)
-		adminGroup.Post("/movies/delete/:id", middleware.VerifyAdminToken, admin.DeleteMovie)
+		adminGroup.Get("/movies", admin.GetMovieList)
+		adminGroup.Get("/movies/add", admin.GetAddMovie)
+		adminGroup.Post("/movies/add", admin.PostAddMovie)
+		adminGroup.Get("/movies/bulk-add", admin.GetBulkAddMovies)
+		adminGroup.Post("/movies/bulk-add", admin.PostBulkAddMovies)
+		adminGroup.Get("/movies/edit/:id", admin.GetEditMovie)
+		adminGroup.Post("/movies/edit/:id", admin.PostEditMovie)
+		adminGroup.Post("/movies/delete/:id", admin.DeleteMovie)
 
 		// Trending Movies
-		adminGroup.Post("/movies/trending/add/:id", middleware.VerifyAdminToken, admin.AddToTrending)
-		adminGroup.Post("/movies/trending/remove/:id", middleware.VerifyAdminToken, admin.RemoveFromTrending)
+		adminGroup.Post("/movies/trending/add/:id", admin.AddToTrending)
+		adminGroup.Post("/movies/trending/remove/:id", admin.RemoveFromTrending)
 
 		// Static Pages Management
-		adminGroup.Get("/static-pages", middleware.VerifyAdminToken, admin.GetStaticPageList)
-		adminGroup.Get("/static-pages/add", middleware.VerifyAdminToken, admin.GetAddStaticPage)
-		adminGroup.Post("/static-pages/add", middleware.VerifyAdminToken, admin.PostAddStaticPage)
-		adminGroup.Get("/static-pages/edit/:id", middleware.VerifyAdminToken, admin.GetEditStaticPage)
-		adminGroup.Post("/static-pages/edit/:id", middleware.VerifyAdminToken, admin.PostEditStaticPage)
-		adminGroup.Post("/static-pages/delete/:id", middleware.VerifyAdminToken, admin.DeleteStaticPage)
+		adminGroup.Get("/static-pages", admin.GetStaticPageList)
+		adminGroup.Get("/static-pages/add", admin.GetAddStaticPage)
+		adminGroup.Post("/static-pages/add", admin.PostAddStaticPage)
+		adminGroup.Get("/static-pages/edit/:id", admin.GetEditStaticPage)
+		adminGroup.Post("/static-pages/edit/:id", admin.PostEditStaticPage)
+		adminGroup.Post("/static-pages/delete/:id", admin.DeleteStaticPage)
+
+		// Logs Management
+		adminGroup.Get("/logs", admin.GetLogs)
+		adminGroup.Get("/logs/data", admin.GetLogsData)
+		adminGroup.Post("/logs/clear", admin.ClearLogs)
+		adminGroup.Get("/logs/download", admin.DownloadLogs)
 	}
 
 	// Public Routes
@@ -81,10 +89,9 @@ func Setup(app *fiber.App) {
 
 	// 404 handler
 	app.Use(func(c *fiber.Ctx) error {
-		return c.Status(404).Render("error", fiber.Map{
-			"title":      "404 - Page Not Found",
-			"message":    "The page you are looking for does not exist.",
-			"statusCode": 404,
+		return c.Status(404).JSON(fiber.Map{
+			"success": false,
+			"error":   "Route not found",
 		})
 	})
 }
