@@ -1,66 +1,91 @@
-# GCP Deployment Guide - Quick Start
+# Quick Deployment Guide - Existing GCP Free Tier VM
 
-## Prerequisites
-- Google Cloud account
-- `gcloud` CLI installed and authenticated
-- GitHub repository with your code
+## Your Existing VM Setup
+- **Type**: e2-micro (Always Free)
+- **RAM**: 1GB
+- **CPU**: 0.25-1 vCPU (shared)
+- **Disk**: 30GB
 
 ## Step-by-Step Deployment
 
-### 1. Create GCP VM
+### 1. Connect to Your VM
 ```bash
-gcloud compute instances create filmyfly-server \
-    --zone=us-central1-a \
-    --machine-type=e2-medium \
-    --boot-disk-size=30GB \
-    --image-family=ubuntu-2204-lts \
-    --image-project=ubuntu-os-cloud \
-    --tags=http-server,https-server \
-    --metadata-from-file=startup-script=vm-startup.sh
+# Replace with your actual instance name and zone
+gcloud compute ssh YOUR_INSTANCE_NAME --zone=YOUR_ZONE
 ```
 
-### 2. Configure Firewall
+### 2. Create Swap Space (IMPORTANT for 1GB RAM)
 ```bash
-gcloud compute firewall-rules create allow-http --allow tcp:80 --target-tags http-server
-gcloud compute firewall-rules create allow-https --allow tcp:443 --target-tags https-server
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### 3. SSH into VM and Setup
+### 3. Install Dependencies
 ```bash
-gcloud compute ssh filmyfly-server --zone=us-central1-a
+# Update system
+sudo apt update && sudo apt upgrade -y
 
-# Setup PostgreSQL
+# Install Go
+wget https://go.dev/dl/go1.21.6.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.21.6.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+
+# Install PostgreSQL, Nginx, Git
+sudo apt install -y postgresql postgresql-contrib nginx git
+```
+
+### 4. Setup PostgreSQL
+```bash
+# Create database
 sudo -u postgres psql
 CREATE DATABASE filmyfly;
 CREATE USER filmyfly_user WITH ENCRYPTED PASSWORD 'YOUR_PASSWORD';
 GRANT ALL PRIVILEGES ON DATABASE filmyfly TO filmyfly_user;
 \q
 
-# Restore database
-gcloud compute scp ~/path/to/backup.dump filmyfly-server:~/backup.dump --zone=us-central1-a
-sudo -u postgres pg_restore -d filmyfly -v ~/backup.dump
+# Upload and restore backup (from local machine)
+gcloud compute scp c:\Users\Kailash\Desktop\filmyfly_go\database\supabase_full_backup.dump YOUR_INSTANCE_NAME:~/backup.dump --zone=YOUR_ZONE
+
+# Restore (on VM)
+sudo -u postgres pg_restore -d filmyfly -v ~/backup.dump --no-owner --no-acl
 ```
 
-### 4. Deploy Application
+### 5. Setup Application
 ```bash
+# Create directories
+sudo mkdir -p /opt/filmyfly /var/log/filmyfly
+sudo chown $USER:$USER /opt/filmyfly
+
 # Clone repository
 cd /opt/filmyfly
 git clone https://github.com/YOUR_USERNAME/filmyfly-go-fiber.git .
 
 # Create .env file
-sudo nano /opt/filmyfly/.env
-# Add your environment variables
+nano /opt/filmyfly/.env
+# Add your environment variables (see full guide)
 
 # Build application
 go build -o filmyfly cmd/server/main.go
+```
 
-# Setup systemd service
+### 6. Create Systemd Service
+```bash
+# Copy service file
 sudo cp filmyfly.service /etc/systemd/system/
+
+# Start service
 sudo systemctl daemon-reload
 sudo systemctl enable filmyfly
 sudo systemctl start filmyfly
+```
 
-# Setup Nginx
+### 7. Configure Nginx
+```bash
+# Copy nginx config
 sudo cp nginx.conf /etc/nginx/sites-available/filmyfly
 sudo ln -s /etc/nginx/sites-available/filmyfly /etc/nginx/sites-enabled/
 sudo rm /etc/nginx/sites-enabled/default
@@ -68,9 +93,17 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-### 5. Setup Auto-Deployment
+### 8. Configure Firewall
 ```bash
-# Connect GitHub to Cloud Build
+# Add firewall rules (if not exist)
+gcloud compute firewall-rules create allow-http --allow tcp:80 --target-tags http-server
+gcloud compute instances add-tags YOUR_INSTANCE_NAME --zone=YOUR_ZONE --tags=http-server
+```
+
+### 9. Setup Auto-Deployment
+```bash
+# Update cloudbuild.yaml with your instance name and zone
+# Then create trigger
 gcloud builds triggers create github \
     --repo-name=filmyfly-go-fiber \
     --repo-owner=YOUR_GITHUB_USERNAME \
@@ -78,30 +111,34 @@ gcloud builds triggers create github \
     --build-config=cloudbuild.yaml
 ```
 
-### 6. Get Your Application URL
+### 10. Get Your URL
 ```bash
-gcloud compute instances describe filmyfly-server \
-    --zone=us-central1-a \
-    --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+gcloud compute instances describe YOUR_INSTANCE_NAME --zone=YOUR_ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
 ```
 
-Visit `http://YOUR_VM_IP` to see your application!
+Visit: `http://YOUR_EXTERNAL_IP`
 
-## Useful Commands
+## Quick Commands
 
-### Check Application Status
 ```bash
+# Check status
 sudo systemctl status filmyfly
-```
 
-### View Logs
-```bash
+# View logs
 sudo journalctl -u filmyfly -f
+
+# Restart app
+sudo systemctl restart filmyfly
+
+# Check memory
+free -h
 ```
 
-### Manual Deployment
-```bash
-./deploy.sh
-```
+## Important Notes
 
-For detailed instructions, see `gcp_deployment_plan.md`
+✅ **Swap space is CRITICAL** - 1GB RAM is not enough without it
+✅ **PostgreSQL is optimized** for low memory in the config
+✅ **Memory limits** are set in systemd service (400MB max)
+✅ **Auto-deployment** triggers on push to main branch
+
+For detailed instructions, see the full deployment plan!
