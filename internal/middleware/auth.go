@@ -1,11 +1,6 @@
 package middleware
 
 import (
-	"context"
-	"strings"
-
-	"filmyfly-go-fiber/internal/config"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
 )
@@ -14,75 +9,54 @@ var Store *session.Store
 
 // InitSession initializes the session store
 func InitSession() {
-	cfg := config.Load()
 	Store = session.New(session.Config{
 		KeyLookup:      "cookie:session_id",
-		CookieSecure:   cfg.Environment == "production",
+		CookieSecure:   false, // Set to true in production with HTTPS
 		CookieHTTPOnly: true,
 		CookieSameSite: "Lax",
 	})
 }
 
-// VerifyAdminToken middleware verifies Firebase ID token and manages session
-func VerifyAdminToken(c *fiber.Ctx) error {
-	sess, err := Store.Get(c)
-	if err != nil {
-		return c.Redirect("/admin/login")
-	}
+// GetSession returns the session for the current request
+func GetSession(c *fiber.Ctx) *session.Session {
+	sess, _ := Store.Get(c)
+	return sess
+}
 
-	// Check if user is already authenticated via session
-	adminUser := sess.Get("adminUser")
-	if adminUser != nil {
-		c.Locals("user", adminUser)
-		return c.Next()
-	}
+// RequireAuth middleware checks if user is authenticated
+func RequireAuth(c *fiber.Ctx) error {
+	sess := GetSession(c)
 
-	// Get token from cookie or Authorization header
-	token := c.Cookies("adminToken")
-	if token == "" {
-		authHeader := c.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			token = strings.TrimPrefix(authHeader, "Bearer ")
+	// Check if user is authenticated
+	uid := sess.Get("uid")
+	if uid == nil {
+		// Redirect to login for HTML requests
+		if c.Get("Accept") == "" || c.Get("Accept") == "text/html" {
+			return c.Redirect("/admin/login?error=Please login to continue")
 		}
+		// Return JSON error for API requests
+		return c.Status(401).JSON(fiber.Map{
+			"success": false,
+			"error":   "Unauthorized - Please login",
+		})
 	}
 
-	if token == "" {
-		return c.Redirect("/admin/login")
-	}
+	// Set user info in locals for handlers to access
+	c.Locals("user", fiber.Map{
+		"uid":         sess.Get("uid"),
+		"email":       sess.Get("email"),
+		"displayName": sess.Get("displayName"),
+	})
 
-	// Verify token with Firebase
-	ctx := context.Background()
-	decodedToken, err := config.FirebaseAuth.VerifyIDToken(ctx, token)
-	if err != nil {
-		// Clear invalid token
-		c.ClearCookie("adminToken")
-		sess.Delete("adminUser")
-		sess.Save()
-		return c.Redirect("/admin/login")
-	}
-
-	// Store user info in session
-	userInfo := map[string]interface{}{
-		"uid":   decodedToken.UID,
-		"email": decodedToken.Claims["email"],
-		"name":  decodedToken.Claims["name"],
-	}
-	sess.Set("adminUser", userInfo)
-	sess.Save()
-
-	c.Locals("user", userInfo)
 	return c.Next()
 }
 
 // RedirectIfAuthenticated redirects to dashboard if already logged in
 func RedirectIfAuthenticated(c *fiber.Ctx) error {
-	sess, err := Store.Get(c)
-	if err != nil {
-		return c.Next()
-	}
+	sess := GetSession(c)
 
-	adminUser := sess.Get("adminUser")
-	if adminUser != nil {
+	uid := sess.Get("uid")
+	if uid != nil {
 		return c.Redirect("/admin")
 	}
 

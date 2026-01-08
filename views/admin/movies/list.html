@@ -119,12 +119,29 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
-        .search-input {
+        .search-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .search-input, .filter-select {
             width: 100%;
             padding: 0.75rem;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
             font-size: 1rem;
+        }
+
+        .filter-select {
+            background: white;
+            cursor: pointer;
+        }
+
+        .search-actions {
+            display: flex;
+            gap: 0.5rem;
         }
 
         .section {
@@ -247,12 +264,24 @@
         {{end}}
 
         <form method="GET" class="search-form">
-            <input type="text" name="search" placeholder="Search movies by title..." value="{{.search}}"
-                class="search-input">
-            <button type="submit" class="btn" style="margin-top:1rem;">Search</button>
-            {{if .search}}
-            <a href="/admin/movies" class="btn btn-secondary" style="margin-top:1rem;margin-left:0.5rem;">Clear</a>
-            {{end}}
+            <div class="search-grid">
+                <input type="text" name="search" placeholder="Search movies by title..." value="{{.search}}"
+                    class="search-input">
+                
+                <select name="category" class="filter-select">
+                    <option value="">All Categories</option>
+                    {{range .categories}}
+                    <option value="{{.ID}}" {{if eq $.category (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>
+                    {{end}}
+                </select>
+            </div>
+            
+            <div class="search-actions">
+                <button type="submit" class="btn">Apply Filters</button>
+                {{if or .search .category}}
+                <a href="/admin/movies" class="btn btn-secondary">Clear Filters</a>
+                {{end}}
+            </div>
         </form>
 
         {{if .trendingMovies}}
@@ -348,12 +377,12 @@
             {{if gt .totalPages 1}}
             <div class="pagination">
                 {{if gt .currentPage 1}}
-                <a href="/admin/movies?page={{sub .currentPage 1}}{{if .search}}&search={{.search}}{{end}}"
+                <a href="/admin/movies?page={{sub .currentPage 1}}{{if .search}}&search={{.search}}{{end}}{{if .category}}&category={{.category}}{{end}}"
                     class="btn">Previous</a>
                 {{end}}
                 <span>Page {{.currentPage}} of {{.totalPages}}</span>
                 {{if lt .currentPage .totalPages}}
-                <a href="/admin/movies?page={{add .currentPage 1}}{{if .search}}&search={{.search}}{{end}}"
+                <a href="/admin/movies?page={{add .currentPage 1}}{{if .search}}&search={{.search}}{{end}}{{if .category}}&category={{.category}}{{end}}"
                     class="btn">Next</a>
                 {{end}}
             </div>

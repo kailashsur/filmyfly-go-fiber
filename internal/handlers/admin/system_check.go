@@ -25,8 +25,6 @@ func GetSystemCheck(c *fiber.Ctx) error {
 	return c.Render("admin/system-check", fiber.Map{
 		"title":          "System Check",
 		"databaseStatus": databaseStatus,
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":           getUserFromSession(c),
 	})
 }

@@ -27,9 +27,7 @@ func GetAstroSettings(c *fiber.Ctx) error {
 		"settings": settings,
 		"success":  success,
 		"error":    errorMsg,
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":     getUserFromSession(c),
 	})
 }
 

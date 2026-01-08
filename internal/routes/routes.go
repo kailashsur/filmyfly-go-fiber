@@ -4,6 +4,7 @@ import (
 	"filmyfly-go-fiber/internal/handlers/admin"
 	"filmyfly-go-fiber/internal/handlers/api"
 	"filmyfly-go-fiber/internal/handlers/public"
+	"filmyfly-go-fiber/internal/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -35,15 +36,17 @@ func Setup(app *fiber.App) {
 		apiGroup.Get("/astro-settings", api.GetAstroSettings)
 	}
 
-	// Admin Routes (Authentication temporarily disabled)
+	// Admin Routes
 	adminGroup := app.Group("/admin")
 	{
-		// Login routes (no auth for now)
-		adminGroup.Get("/login", admin.GetAdminLogin)
+		// Public routes (no authentication required)
+		adminGroup.Get("/login", middleware.RedirectIfAuthenticated, admin.GetAdminLogin)
 		adminGroup.Post("/login", admin.PostAdminLogin)
 		adminGroup.Post("/logout", admin.PostAdminLogout)
 
-		// Admin routes (no auth required temporarily)
+		// Protected routes (authentication required)
+		adminGroup.Use(middleware.RequireAuth)
+
 		adminGroup.Get("/", admin.GetAdminDashboard)
 		adminGroup.Get("/system-check", admin.GetSystemCheck)
 

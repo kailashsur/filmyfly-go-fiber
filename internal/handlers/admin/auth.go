@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"context"
 	"filmyfly-go-fiber/internal/config"
+	"filmyfly-go-fiber/internal/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -24,24 +26,92 @@ func GetAdminLogin(c *fiber.Ctx) error {
 	})
 }
 
-// PostAdminLogin handles login (temporarily simplified - no Firebase verification)
+// PostAdminLogin handles login with Firebase token verification
 func PostAdminLogin(c *fiber.Ctx) error {
-	// For now, just redirect to dashboard
-	// TODO: Implement proper Firebase authentication
-	return c.Redirect("/admin")
+	var req struct {
+		IDToken string `json:"idToken"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"error":   "Invalid request",
+		})
+	}
+
+	// Verify Firebase ID token
+	if config.FirebaseAuth == nil {
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"error":   "Firebase not initialized",
+		})
+	}
+
+	token, err := config.FirebaseAuth.VerifyIDToken(context.Background(), req.IDToken)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{
+			"success": false,
+			"error":   "Invalid authentication token",
+		})
+	}
+
+	// Get user info from token claims
+	email := ""
+	displayName := ""
+
+	if emailClaim, ok := token.Claims["email"].(string); ok {
+		email = emailClaim
+	}
+
+	if nameClaim, ok := token.Claims["name"].(string); ok {
+		displayName = nameClaim
+	}
+
+	// If no name in claims, try display_name or use email
+	if displayName == "" {
+		if displayNameClaim, ok := token.Claims["display_name"].(string); ok {
+			displayName = displayNameClaim
+		} else {
+			displayName = email
+		}
+	}
+
+	// Create session
+	sess := middleware.GetSession(c)
+	sess.Set("uid", token.UID)
+	sess.Set("email", email)
+	sess.Set("displayName", displayName)
+
+	if err := sess.Save(); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"error":   "Failed to create session",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Login successful",
+	})
 }
 
 // PostAdminLogout handles logout
 func PostAdminLogout(c *fiber.Ctx) error {
+	sess := middleware.GetSession(c)
+	if err := sess.Destroy(); err != nil {
+		return c.Redirect("/admin")
+	}
 	return c.Redirect("/admin/login")
 }
 
 // GetAdminDashboard renders the admin dashboard
 func GetAdminDashboard(c *fiber.Ctx) error {
-	// Mock user data for now
+	sess := middleware.GetSession(c)
+
 	user := map[string]interface{}{
-		"email": "admin@filmyfly.work",
-		"name":  "Admin User",
+		"email":       sess.Get("email"),
+		"displayName": sess.Get("displayName"),
+		"uid":         sess.Get("uid"),
 	}
 
 	return c.Render("admin/dashboard", fiber.Map{

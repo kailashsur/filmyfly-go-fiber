@@ -11,9 +11,7 @@ import (
 func GetLogs(c *fiber.Ctx) error {
 	return c.Render("admin/logs", fiber.Map{
 		"title": "View Logs",
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":  getUserFromSession(c),
 	})
 }
 

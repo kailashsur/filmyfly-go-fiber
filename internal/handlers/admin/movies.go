@@ -20,8 +20,13 @@ func GetMovieList(c *fiber.Ctx) error {
 	offset := (page - 1) * limit
 
 	search := c.Query("search", "")
+	category := c.Query("category", "")
 	success := c.Query("success", "")
 	errorMsg := c.Query("error", "")
+
+	// Get all categories for filter dropdown
+	var categories []models.Category
+	database.DB.Order("name ASC").Find(&categories)
 
 	// Get trending movies with movie details
 	var trendingMoviesData []models.TrendingMovie
@@ -40,8 +45,17 @@ func GetMovieList(c *fiber.Ctx) error {
 
 	query := database.DB.Model(&models.Movie{})
 
+	// Apply search filter
 	if search != "" {
 		query = query.Where("LOWER(title) LIKE ?", "%"+search+"%")
+	}
+
+	// Apply category filter
+	if category != "" {
+		categoryID, _ := strconv.Atoi(category)
+		if categoryID > 0 {
+			query = query.Where("\"categoryId\" = ?", categoryID)
+		}
 	}
 
 	query.Count(&total)
@@ -70,14 +84,14 @@ func GetMovieList(c *fiber.Ctx) error {
 		"title":          "Movies Management",
 		"movies":         moviesWithTrending,
 		"trendingMovies": trendingMovies,
+		"categories":     categories,
 		"currentPage":    page,
 		"totalPages":     totalPages,
 		"search":         search,
+		"category":       category,
 		"success":        success,
 		"error":          errorMsg,
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":           getUserFromSession(c),
 	})
 }
 
@@ -118,9 +132,7 @@ func PostAddMovie(c *fiber.Ctx) error {
 func GetBulkAddMovies(c *fiber.Ctx) error {
 	return c.Render("admin/movies/bulk-add", fiber.Map{
 		"title": "Bulk Add Movies",
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":  getUserFromSession(c),
 	})
 }
 

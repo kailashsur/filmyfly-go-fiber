@@ -30,16 +30,16 @@ func main() {
 	}
 	utils.Info("Database connected successfully")
 
-	// Initialize Firebase (temporarily disabled)
-	// if err := config.InitializeFirebase(); err != nil {
-	// 	utils.Warn("Firebase initialization failed: %v. Admin authentication will not work.", err)
-	// } else {
-	// 	utils.Info("Firebase initialized successfully")
-	// }
+	// Initialize Firebase
+	if err := config.InitializeFirebase(); err != nil {
+		utils.Warn("Firebase initialization failed: %v. Admin authentication will not work.", err)
+	} else {
+		utils.Info("Firebase initialized successfully")
+	}
 
-	// Initialize session store (temporarily disabled)
-	// middleware.InitSession()
-	// utils.Info("Session store initialized")
+	// Initialize session store
+	middleware.InitSession()
+	utils.Info("Session store initialized")
 
 	// Initialize template engine
 	engine := html.New("./views", ".html")

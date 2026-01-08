@@ -30,9 +30,7 @@ func GetStaticPageList(c *fiber.Ctx) error {
 func GetAddStaticPage(c *fiber.Ctx) error {
 	return c.Render("admin/static-pages/add", fiber.Map{
 		"title": "Add Static Page",
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":  getUserFromSession(c),
 	})
 }
 
@@ -77,9 +75,7 @@ func GetEditStaticPage(c *fiber.Ctx) error {
 	return c.Render("admin/static-pages/edit", fiber.Map{
 		"title": "Edit Static Page",
 		"page":  page,
-		"user": map[string]interface{}{
-			"email": "admin@filmyfly.work",
-		},
+		"user":  getUserFromSession(c),
 	})
 }
 

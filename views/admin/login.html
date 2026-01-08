@@ -40,18 +40,23 @@
                         const userCredential = await signInWithEmailAndPassword(auth, email, password);
                         const idToken = await userCredential.user.getIdToken();
 
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = '/admin/login';
+                        // Send token to backend
+                        const response = await fetch('/admin/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ idToken })
+                        });
 
-                        const tokenInput = document.createElement('input');
-                        tokenInput.type = 'hidden';
-                        tokenInput.name = 'idToken';
-                        tokenInput.value = idToken;
+                        const data = await response.json();
 
-                        form.appendChild(tokenInput);
-                        document.body.appendChild(form);
-                        form.submit();
+                        if (data.success) {
+                            // Redirect to admin dashboard
+                            window.location.href = '/admin';
+                        } else {
+                            throw new Error(data.error || 'Login failed');
+                        }
                     } catch (error) {
                         console.error('Login error:', error);
                         submitBtn.disabled = false;
