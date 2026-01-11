@@ -134,6 +134,16 @@
                 </div>
 
                 <div class="form-group">
+                    <label>Category</label>
+                    <select name="categoryId">
+                        <option value="">No Category</option>
+                        {{range .categories}}
+                        <option value="{{.ID}}" {{if $.movie.CategoryID}}{{if eq $.movie.CategoryID .ID}}selected{{end}}{{end}}>{{.Name}}</option>
+                        {{end}}
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label>Description</label>
                     <textarea name="description">{{if .movie.Description}}{{.movie.Description}}{{end}}</textarea>
                 </div>
