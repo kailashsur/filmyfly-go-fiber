@@ -112,8 +112,10 @@ func GetMovieBySlug(c *fiber.Ctx) error {
 	// Get download redirect URL from settings
 	var downloadRedirectURL string
 	var setting models.Setting
-	if err := database.DB.Where("`key` = ?", "downloadRedirectUrl").First(&setting).Error; err == nil {
+	if err := database.DB.Where("key = ?", "downloadRedirectUrl").First(&setting).Error; err == nil {
 		downloadRedirectURL = setting.Value
+	} else {
+		utils.Error("Failed to fetch downloadRedirectUrl setting: %v", err)
 	}
 
 	return c.JSON(fiber.Map{

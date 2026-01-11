@@ -14,7 +14,19 @@ func GetSettings(c *fiber.Ctx) error {
 
 	// Fetch all settings
 	var settingsData []models.Setting
-	database.DB.Find(&settingsData)
+	result := database.DB.Find(&settingsData)
+
+	if result.Error != nil {
+		return c.Render("admin/settings", fiber.Map{
+			"title":    "Site Settings",
+			"settings": make(map[string]string),
+			"success":  "",
+			"error":    "Failed to fetch settings: " + result.Error.Error(),
+			"user": map[string]interface{}{
+				"email": "admin@filmyfly.work",
+			},
+		})
+	}
 
 	// Convert to map for easier template access
 	settings := make(map[string]string)
@@ -46,7 +58,7 @@ func PostSettings(c *fiber.Ctx) error {
 		var setting models.Setting
 
 		// Find or create setting
-		result := database.DB.Where("`key` = ?", key).First(&setting)
+		result := database.DB.Where("key = ?", key).First(&setting)
 
 		if result.Error != nil {
 			// Create new setting
