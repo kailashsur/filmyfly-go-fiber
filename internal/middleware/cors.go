@@ -16,6 +16,8 @@ func CORS(cfg *config.Config) fiber.Handler {
 		"https://www.filmyfly.work",
 		"https://filmyflyhd.space",
 		"https://www.filmyflyhd.space",
+		"https://filmyfiy.online",
+		"https://www.filmyfiy.online",
 	}
 
 	if cfg.FrontendURL != "" {
